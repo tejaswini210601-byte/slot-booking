@@ -1,6 +1,8 @@
-# Slot Booking
+# Latolankatu 9 – laundry & sauna booking
 
-A free online booking page for shared slots in an apartment building (laundry room, 07:00–21:00, 1-hour slots).
+A free online booking page for the laundry rooms and saunas at Latolankatu 9, Joensuu.
+Residents pick their building (A, B, C…), a day in the next two weeks, and an hour (07:00–21:00, 1-hour slots).
+Booked slots show the first name and apartment of whoever booked them.
 
 Residents book online, get a confirmation email, and get a reminder before their slot asking them to
 confirm or release it. Unconfirmed slots are freed automatically so other residents can use them.
@@ -21,14 +23,15 @@ Google Sheet ("Bookings" tab)        Confirmation · Reminder · Slot released
 |------|------|--------------|
 | Frontend | `index.html` | The page residents see: day cards, slot buttons, booking form |
 | Backend | `apps-script/Code.gs` | Checks free slots, saves bookings, sends emails, runs the 15-minute timer |
-| Database | Google Sheet | One row per booking; the building can open it any time |
+| Database | Google Sheet | One row per booking (building, facility, apartment…); the housing office can open it any time |
 
 **Booking status flow:** `booked` → `confirmed` (clicked "Yes") / `released` (clicked "Release") / `expired` (didn't answer in time).
 
 **Timing rules** (change them in `CONFIG` at the top of `Code.gs`):
 - reminder 2 hours before the slot
 - not confirmed 30 minutes before → slot released
-- max 2 upcoming bookings per apartment
+- max 2 upcoming bookings per apartment, per facility
+- buildings and their facilities are listed in `CONFIG.BUILDINGS`
 
 ## Setup (about 15 minutes)
 
@@ -58,3 +61,8 @@ This keeps the same URL, so the page keeps working.
 
 ## Limits
 A free Gmail account can send about 100 emails a day from Apps Script — plenty for one building.
+
+## Updating the backend to a new version
+1. Paste the new `Code.gs` over the old one in Apps Script and save.
+2. Run `setup` again if the columns changed (the old Bookings tab is kept as a backup).
+3. **Deploy → Manage deployments → pencil → Version: New version → Deploy.** The URL stays the same.

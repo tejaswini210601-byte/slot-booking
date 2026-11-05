@@ -3,186 +3,398 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Laundry Booking</title>
+<title>Latolankatu 9 Booking</title>
+<meta name="description" content="Book the laundry room or sauna at Latolankatu 9, Joensuu.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!--
-  SLOT BOOKING – frontend (the page residents see)
+  LATOLANKATU 9 – laundry & sauna booking – frontend
 
-  How it works:
-  1. When the page opens, it asks the backend (Google Apps Script) for this week's slots.
-  2. It draws one card per day with a button per slot (green = free, grey = taken).
-  3. Tapping a free slot opens a small form (name, apartment, email).
-  4. Submitting sends the booking to the backend, which saves it and emails a confirmation.
+  How the page works:
+  1. It loads slots for the chosen building from the backend (Google Apps Script).
+  2. The date strip shows the next two weeks. The board shows one row per hour for that day.
+  3. Each row has a tag per facility: blue = laundry, amber = sauna, grey with a name = already booked.
+  4. Tapping an hour opens a sheet where you choose laundry or sauna and enter your details.
+  5. The booking is sent to the backend, which saves it and emails a confirmation.
 
-  The only thing you must change: API_URL below → your Apps Script web app address.
+  Settings: API_URL below → your Apps Script web app address.
 -->
 <style>
   :root {
-    --bg: #f6f7f9; --card: #ffffff; --text: #1d2433; --muted: #667085;
-    --free: #067647; --free-bg: #ecfdf3; --taken: #98a2b3; --taken-bg: #f2f4f7;
-    --accent: #2f54eb; --error: #b42318; --border: #e4e7ec;
+    --snow: #f1f4f6;      /* page background, winter light */
+    --paper: #ffffff;     /* surfaces */
+    --ink: #15202b;       /* text */
+    --muted: #5a6a7a;     /* secondary text */
+    --line: #d6dee5;      /* borders */
+    --lake: #23466e;      /* Pielisjoki blue: primary actions, selected states */
+    --laundry: #2f7bc0;   /* laundry room */
+    --laundry-soft: #e3effa;
+    --sauna: #c4661b;     /* sauna, löyly amber */
+    --sauna-soft: #fbeadb;
+    --taken: #e4e9ee;     /* booked by a neighbour */
+    --taken-ink: #44525f;
+    --error: #b42318;
+    --radius: 12px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #12151c; --card: #1c212b; --text: #eef0f4; --muted: #98a2b3;
-      --free: #6ce9a6; --free-bg: #0d2a1d; --taken: #667085; --taken-bg: #232936;
-      --accent: #8aa2ff; --error: #fda29b; --border: #2c3341;
+      --snow: #0e1620; --paper: #16212d; --ink: #e8eef3; --muted: #93a3b3; --line: #273546;
+      --lake: #8db4e2; --laundry: #6aa8e0; --laundry-soft: #142a40;
+      --sauna: #eb9a55; --sauna-soft: #3a2414; --taken: #1f2c3a; --taken-ink: #b3c1ce; --error: #fda29b;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.45; }
-  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 20px; }
-  .day { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-         padding: 14px; margin-bottom: 12px; }
-  .day h2 { font-size: 1rem; margin: 0 0 10px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
-  .slot { border: 0; border-radius: 10px; padding: 12px 8px; font: inherit; font-weight: 600;
-          cursor: pointer; background: var(--free-bg); color: var(--free); }
-  .slot small { display: block; font-weight: 400; font-size: .8rem; }
-  .slot:disabled { background: var(--taken-bg); color: var(--taken); cursor: default; text-decoration: line-through; }
-  .empty { color: var(--muted); margin: 0; }
-  dialog { border: 0; border-radius: 16px; padding: 20px; width: min(420px, calc(100% - 32px));
-           background: var(--card); color: var(--text); }
-  dialog::backdrop { background: rgba(0,0,0,.45); }
-  label { display: block; font-size: .9rem; margin: 12px 0 4px; }
-  input { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px;
-          font: inherit; background: var(--bg); color: var(--text); }
-  .row { display: flex; gap: 8px; margin-top: 18px; }
-  .btn { flex: 1; padding: 12px; border-radius: 10px; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
-  .primary { background: var(--accent); color: #fff; }
-  .ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
-  .msg { margin: 12px 0 0; font-size: .95rem; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--snow); color: var(--ink);
+    font-family: "Familjen Grotesk", system-ui, sans-serif; font-size: 17px; line-height: 1.5;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 80px; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--lake); outline-offset: 2px; }
+
+  /* Header */
+  .place { margin: 0; color: var(--muted); font-size: 1rem; }
+  h1 { font-size: clamp(2rem, 7vw, 3.1rem); line-height: 1.05; letter-spacing: -0.02em; font-weight: 700; margin: 6px 0 28px; max-width: 14ch; }
+  h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 10px; }
+  section { margin-bottom: 26px; }
+
+  /* Building signs: the big letters painted on each block */
+  .buildings { display: flex; gap: 10px; flex-wrap: wrap; }
+  .building {
+    width: 68px; height: 68px; border-radius: 10px; border: 2px solid var(--line); background: var(--paper);
+    font-size: 2.1rem; font-weight: 700; line-height: 1; cursor: pointer;
+  }
+  .building[aria-pressed="true"] { background: var(--lake); border-color: var(--lake); color: var(--snow); }
+
+  /* Date strip */
+  .days { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  .day {
+    flex: 0 0 auto; width: 64px; padding: 8px 0 10px; border-radius: var(--radius); border: 1px solid var(--line);
+    background: var(--paper); cursor: pointer; text-align: center; scroll-snap-align: start;
+  }
+  .day span { display: block; }
+  .day .wd { font-size: .85rem; color: var(--muted); }
+  .day .dn { font-size: 1.5rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .day .mo { font-size: .8rem; color: var(--muted); }
+  .day[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--snow); }
+  .day[aria-pressed="true"] span { color: inherit; }
+
+  /* Board */
+  .boardhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .boardhead h2 { font-size: 1.35rem; margin: 0; }
+  .legend { display: flex; gap: 14px; font-size: .9rem; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  .board { list-style: none; margin: 0; padding: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .board li + li { border-top: 1px solid var(--line); }
+  .hour {
+    width: 100%; display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 12px;
+    padding: 8px 14px; background: none; border: 0; text-align: left; cursor: pointer;
+  }
+  .hour:hover:not(:disabled) { background: color-mix(in srgb, var(--snow) 70%, transparent); }
+  .hour:disabled { cursor: default; }
+  .time { font-weight: 700; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .time small { display: block; font-weight: 400; font-size: .8rem; color: var(--muted); }
+  .tags { display: grid; grid-template-columns: repeat(var(--cols, 2), 1fr); gap: 8px; }
+  .colhead { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: .9rem; font-weight: 600; }
+  .colhead .tags span { padding-left: 4px; }
+
+  /* A tag looks like a key tag hanging on the booking board */
+  .tag {
+    position: relative; display: flex; flex-direction: column; justify-content: center; padding: 6px 10px 6px 26px; border-radius: 8px 10px 10px 8px;
+    font-size: .92rem; line-height: 1.25; min-height: 44px;
+  }
+  .tag::before {
+    content: ""; position: absolute; left: 9px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+    border-radius: 50%; background: var(--paper); box-shadow: inset 0 0 0 2px currentColor;
+  }
+  .tag b { display: block; font-weight: 600; }
+  .tag.laundry { background: var(--laundry-soft); color: var(--laundry); }
+  .tag.sauna { background: var(--sauna-soft); color: var(--sauna); }
+  .tag.taken { background: var(--taken); color: var(--taken-ink); }
+  .tag.taken.laundry::before { box-shadow: inset 0 0 0 2px var(--laundry); }
+  .tag.taken.sauna::before { box-shadow: inset 0 0 0 2px var(--sauna); }
+  .tag.taken b { color: var(--ink); }
+  .tag.mine.laundry { background: var(--laundry); color: var(--paper); }
+  .tag.mine.sauna { background: var(--sauna); color: var(--paper); }
+  .tag.mine b { color: inherit; }
+
+  .note { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); margin: 0; }
+  .rules { color: var(--muted); font-size: .95rem; margin-top: 18px; max-width: 60ch; }
+
+  /* Booking sheet */
+  dialog {
+    border: 0; padding: 0; width: min(480px, 100%); max-height: 92vh; border-radius: 20px 20px 0 0;
+    margin: auto auto 0; background: var(--paper); color: var(--ink);
+  }
+  @media (min-width: 600px) { dialog { margin: auto; border-radius: 20px; } }
+  dialog[open] { animation: rise .22s ease-out; }
+  @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { dialog[open] { animation: none; } }
+  dialog::backdrop { background: rgba(10, 20, 30, .5); }
+  .sheet { padding: 22px 20px 24px; }
+  .sheet h3 { font-size: 1.5rem; line-height: 1.15; margin: 0; letter-spacing: -0.01em; }
+  .sheet .sub { color: var(--muted); margin: 2px 0 18px; }
+  fieldset { border: 0; padding: 0; margin: 0 0 6px; }
+  legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
+  .choices { display: grid; gap: 8px; }
+  .choice { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); border: 2px solid var(--line); cursor: pointer; }
+  .choice input { width: 20px; height: 20px; margin: 0; accent-color: var(--lake); }
+  .choice .what { font-weight: 600; }
+  .choice .status { display: block; font-size: .9rem; color: var(--muted); }
+  .choice.laundry:has(input:checked) { border-color: var(--laundry); background: var(--laundry-soft); }
+  .choice.sauna:has(input:checked) { border-color: var(--sauna); background: var(--sauna-soft); }
+  .choice:has(input:disabled) { cursor: default; opacity: .65; }
+  label.field { display: block; font-size: .95rem; font-weight: 500; margin: 14px 0 6px; }
+  .apt { display: flex; align-items: stretch; }
+  .apt span { display: grid; place-items: center; min-width: 48px; border: 1px solid var(--line); border-right: 0; border-radius: 10px 0 0 10px; font-weight: 700; background: var(--snow); }
+  .apt input { border-radius: 0 10px 10px 0; }
+  input[type=text], input[type=email] {
+    width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit;
+    background: var(--snow); color: var(--ink);
+  }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn { flex: 1; padding: 13px; border-radius: 10px; border: 0; font-weight: 600; cursor: pointer; }
+  .btn.primary { background: var(--lake); color: var(--snow); }
+  .btn.primary:disabled { opacity: .6; cursor: default; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); }
+  .msg { margin: 12px 0 0; min-height: 1.5em; }
   .msg.error { color: var(--error); }
-  .notice { padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); }
+  .done h3 { margin-bottom: 6px; }
 </style>
 </head>
 <body>
 <main>
-  <h1 id="title">Slot booking</h1>
-  <p class="sub">Tap a green slot to book it. You'll get a reminder before your slot – please confirm it, or it's released for others.</p>
-  <div id="days"><p class="notice">Loading slots…</p></div>
+  <p class="place">Latolankatu 9, Joensuu</p>
+  <h1>Book the laundry room or sauna</h1>
+
+  <section aria-labelledby="bTitle">
+    <h2 id="bTitle">Your building</h2>
+    <div class="buildings" id="buildings"></div>
+  </section>
+
+  <section aria-labelledby="dTitle">
+    <h2 id="dTitle">Day</h2>
+    <div class="days" id="days"></div>
+  </section>
+
+  <section aria-live="polite">
+    <div class="boardhead">
+      <h2 id="dayLabel">Loading slots…</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div id="board"></div>
+  </section>
+
+  <p class="rules" id="rules"></p>
 </main>
 
-<dialog id="dlg">
-  <form id="form">
-    <h2 id="dlgTitle" style="margin:0;font-size:1.1rem"></h2>
-    <label for="name">Name</label>
-    <input id="name" name="name" required autocomplete="name">
-    <label for="apartment">Apartment number</label>
-    <input id="apartment" name="apartment" required placeholder="e.g. B12">
-    <label for="email">Email</label>
+<dialog id="dlg" aria-labelledby="sheetTitle">
+  <form id="form" class="sheet" novalidate>
+    <h3 id="sheetTitle"></h3>
+    <p class="sub" id="sheetSub"></p>
+    <fieldset>
+      <legend>What do you want to book?</legend>
+      <div class="choices" id="choices"></div>
+    </fieldset>
+    <label class="field" for="apartment">Apartment number</label>
+    <div class="apt"><span id="aptPrefix">A</span><input id="apartment" name="apartment" type="text" required placeholder="12" autocomplete="off"></div>
+    <label class="field" for="name">Name</label>
+    <input id="name" name="name" type="text" required autocomplete="name">
+    <label class="field" for="email">Email</label>
     <input id="email" name="email" type="email" required autocomplete="email">
     <p id="msg" class="msg" role="status"></p>
-    <div class="row">
-      <button type="button" class="btn ghost" id="cancel">Cancel</button>
+    <div class="actions">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
       <button type="submit" class="btn primary" id="submit">Book</button>
     </div>
   </form>
+  <div class="sheet done" id="done" hidden>
+    <h3>Booked</h3>
+    <p id="doneText"></p>
+    <div class="actions"><button type="button" class="btn primary" data-close>Done</button></div>
+  </div>
 </dialog>
 
 <script>
-// ▼▼▼ Paste your Apps Script web app URL here (it ends with /exec) ▼▼▼
 const API_URL = 'https://script.google.com/macros/s/AKfycbwHItetf5LXaOgkbC47deG3XF85jj3nUH8m4Je1yhTmymmSnsM6TMcDH41kQxxyFxLDBA/exec';
 
-const daysEl = document.getElementById('days');
-const dlg = document.getElementById('dlg');
-const form = document.getElementById('form');
-const msg = document.getElementById('msg');
-let chosen = null; // the slot the resident tapped
+const $ = id => document.getElementById(id);
+const dlg = $('dlg'), form = $('form');
 
-// Remember name/apartment/email on this phone so they don't retype every time
-function loadSaved() {
-  try {
-    const s = JSON.parse(localStorage.getItem('bookingDetails') || '{}');
-    ['name', 'apartment', 'email'].forEach(k => { if (s[k]) form[k].value = s[k]; });
-  } catch (e) {}
-}
-function save(d) { try { localStorage.setItem('bookingDetails', JSON.stringify(d)); } catch (e) {} }
+// What the page remembers on this phone (building, name, apartment, email)
+function saved() { try { return JSON.parse(localStorage.getItem('latolaBooking') || '{}'); } catch (e) { return {}; } }
+function remember(obj) { try { localStorage.setItem('latolaBooking', JSON.stringify({ ...saved(), ...obj })); } catch (e) {} }
 
-// 1. Ask the backend for slots
-async function loadSlots() {
-  if (API_URL.startsWith('PASTE')) {
-    daysEl.innerHTML = '<p class="notice">Setup needed: paste the Apps Script URL into API_URL in index.html.</p>';
-    return;
-  }
+const state = { building: saved().building || null, data: null, dayIndex: 0, hour: null };
+
+// ---- 1. Load slots for the building ----
+async function load() {
   try {
-    const res = await fetch(API_URL + '?action=slots');
+    const b = state.building || '';
+    // the extra "_" value makes sure the browser never shows an old, cached answer
+    const res = await fetch(`${API_URL}?action=slots&building=${encodeURIComponent(b)}&_=${Date.now()}`, { cache: 'no-store' });
     const data = await res.json();
-    document.getElementById('title').textContent = data.title;
-    render(data.days);
+    if (!data.ok) throw new Error(data.error);
+    state.data = data;
+    state.building = data.building;
+    render();
   } catch (e) {
-    daysEl.innerHTML = '<p class="notice">Could not load slots. Please refresh the page.</p>';
+    $('dayLabel').textContent = 'Slots didn\'t load';
+    $('board').innerHTML = '<p class="note">Check your connection and refresh the page.</p>';
   }
 }
 
-// 2. Draw the day cards and slot buttons
-function render(days) {
-  daysEl.innerHTML = '';
-  days.forEach(day => {
-    const card = document.createElement('section');
-    card.className = 'day';
-    card.innerHTML = `<h2>${day.label}</h2>`;
-    if (!day.slots.length) {
-      card.insertAdjacentHTML('beforeend', '<p class="empty">No more slots today.</p>');
-    } else {
-      const grid = document.createElement('div');
-      grid.className = 'grid';
-      day.slots.forEach(s => {
-        const b = document.createElement('button');
-        b.className = 'slot';
-        b.disabled = !s.free;
-        b.innerHTML = `${s.start}–${s.end}<small>${s.free ? 'Free' : 'Taken'}</small>`;
-        b.onclick = () => openForm(day, s);
-        grid.appendChild(b);
-      });
-      card.appendChild(grid);
-    }
-    daysEl.appendChild(card);
+// ---- 2. Draw everything ----
+function render() {
+  const d = state.data;
+  const me = saved();
+  const myApt = me.apartment ? `${state.building} ${me.apartment}` : null;
+
+  // Building signs
+  $('buildings').innerHTML = '';
+  d.buildings.forEach(letter => {
+    const btn = document.createElement('button');
+    btn.className = 'building';
+    btn.textContent = letter;
+    btn.setAttribute('aria-pressed', letter === state.building);
+    btn.setAttribute('aria-label', `Building ${letter}`);
+    btn.onclick = () => { state.building = letter; remember({ building: letter }); load(); };
+    $('buildings').appendChild(btn);
   });
+
+  // Date strip
+  $('days').innerHTML = '';
+  d.days.forEach((day, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'day';
+    btn.setAttribute('aria-pressed', i === state.dayIndex);
+    btn.setAttribute('aria-label', day.label);
+    btn.innerHTML = `<span class="wd">${i === 0 ? 'Today' : day.weekday}</span><span class="dn">${day.day}</span><span class="mo">${day.month}</span>`;
+    btn.onclick = () => { state.dayIndex = i; render(); };
+    $('days').appendChild(btn);
+  });
+
+  // Legend
+  $('legend').innerHTML = d.facilities.map(f =>
+    `<span><i style="background:var(--${f.id})"></i>${f.name}</span>`).join('') +
+    `<span><i style="background:var(--taken-ink)"></i>Booked</span>`;
+
+  // Board for the chosen day
+  const day = d.days[state.dayIndex];
+  $('dayLabel').textContent = `${day.label}, building ${state.building}`;
+  if (!day.hours.length) {
+    $('board').innerHTML = '<p class="note">No more slots today. Pick another day above.</p>';
+  } else {
+    const wrap = document.createElement('div');
+    wrap.className = 'board';
+    wrap.style.setProperty('--cols', d.facilities.length);
+    wrap.innerHTML = `<div class="colhead" aria-hidden="true"><span>Time</span><span class="tags">${
+      d.facilities.map(f => `<span style="color:var(--${f.id})">${f.name}</span>`).join('')}</span></div>`;
+    const ol = document.createElement('ol');
+    ol.style.cssText = 'list-style:none;margin:0;padding:0';
+    day.hours.forEach(h => {
+      const anyFree = d.facilities.some(f => !h.booked[f.id]);
+      const tags = d.facilities.map(f => {
+        const who = h.booked[f.id];
+        if (!who) return `<span class="tag ${f.id}" aria-label="${f.name} free"><b>Free</b></span>`;
+        const mine = myApt && who.apartment === myApt;
+        return `<span class="tag ${f.id} ${mine ? 'mine' : 'taken'}" aria-label="${f.name} booked by ${esc(who.name)}"><b>${mine ? 'You' : esc(who.name)}</b>${esc(who.apartment)}</span>`;
+      }).join('');
+      const li = document.createElement('li');
+      li.innerHTML = `<button class="hour" ${anyFree ? '' : 'disabled'}>
+          <span class="time">${h.start}<small>to ${h.end}</small></span>
+          <span class="tags">${tags}</span></button>`;
+      li.querySelector('button').onclick = () => openSheet(day, h);
+      ol.appendChild(li);
+    });
+    wrap.appendChild(ol);
+    $('board').innerHTML = '';
+    $('board').appendChild(wrap);
+  }
+
+  const r = d.rules;
+  $('rules').textContent = `You'll get a reminder email ${r.reminderHours} hours before your slot. Confirm it, or the slot opens up for your neighbours ${r.cutoffMinutes} minutes before it starts. Each apartment can have ${r.maxPerApartment} upcoming bookings per facility.`;
 }
 
-// 3. Open the booking form
-function openForm(day, slot) {
-  chosen = { date: day.date, start: slot.start, resource: slot.resource };
-  document.getElementById('dlgTitle').textContent = `${day.label}, ${slot.start}–${slot.end}`;
-  msg.textContent = ''; msg.className = 'msg';
-  loadSaved();
+// ---- 3. Booking sheet ----
+function openSheet(day, h) {
+  state.hour = { date: day.date, start: h.start };
+  $('sheetTitle').textContent = `${day.weekday} ${day.day} ${day.month}, ${h.start}–${h.end}`;
+  $('sheetSub').textContent = `Building ${state.building}, Latolankatu 9`;
+  $('aptPrefix').textContent = state.building;
+
+  let firstFree = null;
+  $('choices').innerHTML = state.data.facilities.map(f => {
+    const who = h.booked[f.id];
+    if (!who && !firstFree) firstFree = f.id;
+    const status = who ? `Booked by ${esc(who.name)}, apt ${esc(who.apartment)}` : 'Free';
+    return `<label class="choice ${f.id}">
+      <input type="radio" name="facility" value="${f.id}" ${who ? 'disabled' : ''}>
+      <span><span class="what">${f.name}</span><span class="status">${status}</span></span></label>`;
+  }).join('');
+  form.querySelector(`input[value="${firstFree}"]`).checked = true;
+  updateButton();
+  form.querySelectorAll('input[name=facility]').forEach(r => r.onchange = updateButton);
+
+  const s = saved();
+  ['name', 'apartment', 'email'].forEach(k => { form[k].value = s[k] || ''; });
+  $('msg').textContent = ''; $('msg').className = 'msg';
+  form.hidden = false; $('done').hidden = true;
   dlg.showModal();
 }
-document.getElementById('cancel').onclick = () => dlg.close();
 
-// 4. Send the booking to the backend
+function chosenFacility() {
+  const r = form.querySelector('input[name=facility]:checked');
+  return r && state.data.facilities.find(f => f.id === r.value);
+}
+function updateButton() { const f = chosenFacility(); $('submit').textContent = f ? `Book ${f.name.toLowerCase()}` : 'Book'; }
+
+dlg.addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target === dlg) dlg.close(); });
+
+// ---- 4. Send the booking ----
 form.onsubmit = async (e) => {
   e.preventDefault();
-  const details = { name: form.name.value, apartment: form.apartment.value, email: form.email.value };
-  const btn = document.getElementById('submit');
+  const f = chosenFacility();
+  const details = { name: form.name.value.trim(), apartment: form.apartment.value.trim().toUpperCase(), email: form.email.value.trim() };
+  if (!f || !details.name || !details.apartment || !details.email) {
+    $('msg').textContent = 'Fill in your apartment number, name and email.'; $('msg').className = 'msg error'; return;
+  }
+  const btn = $('submit');
   btn.disabled = true; btn.textContent = 'Booking…';
   try {
     // text/plain avoids a browser "preflight" check that Apps Script doesn't support
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ ...chosen, ...details }),
+      body: JSON.stringify({ ...state.hour, building: state.building, facility: f.id, ...details }),
     });
     const data = await res.json();
     if (data.ok) {
-      save(details);
-      msg.textContent = data.message;
-      setTimeout(() => { dlg.close(); loadSlots(); }, 1800);
+      remember({ ...details, building: state.building });
+      // Show it as booked right away, then reload the real data
+      const day = state.data.days[state.dayIndex];
+      const hour = day.hours.find(x => x.start === state.hour.start);
+      if (hour) hour.booked[f.id] = { name: details.name.split(/\s+/)[0], apartment: `${state.building} ${details.apartment}` };
+      render();
+      $('doneText').textContent = `${f.name}, ${$('sheetTitle').textContent}. ${data.message}`;
+      form.hidden = true; $('done').hidden = false;
+      load();
     } else {
-      msg.textContent = data.error; msg.className = 'msg error';
-      loadSlots(); // refresh in case the slot was just taken
+      $('msg').textContent = data.error; $('msg').className = 'msg error';
+      load();
     }
   } catch (err) {
-    msg.textContent = 'Network problem – please try again.'; msg.className = 'msg error';
+    $('msg').textContent = 'The booking didn\'t go through. Check your connection and try again.'; $('msg').className = 'msg error';
   } finally {
-    btn.disabled = false; btn.textContent = 'Book';
+    btn.disabled = false; updateButton();
   }
 };
 
-loadSlots();
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+load();
 </script>
 </body>
 </html>
