@@ -36,7 +36,7 @@ Google Sheet ("Bookings" tab)        Confirmation · Reminder · Slot released
 1. Create a new Google Sheet (ideally on a shared building account, not a personal Gmail).
 2. In the Sheet: **Extensions → Apps Script**.
 3. Delete the sample code, paste in everything from `apps-script/Code.gs`, and save.
-4. **Project Settings (gear icon) → Time zone → (GMT+02:00) Helsinki**.
+4. Time zone is already set to Helsinki in the code (`tz_()`), so no setting is needed.
 5. Choose the `setup` function in the toolbar and click **Run**. Allow the permissions Google asks for.
    This creates the "Bookings" tab and the 15-minute timer.
 6. **Deploy → New deployment → type: Web app**

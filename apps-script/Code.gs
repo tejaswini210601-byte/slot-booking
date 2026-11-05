@@ -252,7 +252,7 @@ function updateBooking_(b, fields) {
 
 function isActive_(b) { return b.status === 'booked' || b.status === 'confirmed'; }
 function key_(date, start, resource) { return date + '|' + start + '|' + resource; }
-function tz_() { return Session.getScriptTimeZone(); }
+function tz_() { return 'Europe/Helsinki'; } // Finnish time, no matter what the project settings say
 function pad_(n) { return (n < 10 ? '0' : '') + n; }
 function end_(start) { return pad_(Number(start.split(':')[0]) + CONFIG.SLOT_HOURS) + ':00'; }
 function slotDate_(date, start) { return Utilities.parseDate(date + ' ' + start, tz_(), 'yyyy-MM-dd HH:mm'); }
