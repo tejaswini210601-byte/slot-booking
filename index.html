@@ -361,6 +361,15 @@ form.onsubmit = async (e) => {
   if (!f || !details.name || !details.apartment || !details.email) {
     $('msg').textContent = 'Fill in your apartment number, name and email.'; $('msg').className = 'msg error'; return;
   }
+  // Catch common email typos (gmai.com, gmial.com…) before the confirmation goes nowhere
+  const fixed = fixEmail(details.email);
+  if (fixed !== details.email) {
+    form.email.value = fixed;
+    $('msg').textContent = `Did you mean ${fixed}? We corrected it. Check it and tap Book again.`;
+    $('msg').className = 'msg error';
+    form.email.focus();
+    return;
+  }
   const btn = $('submit');
   btn.disabled = true; btn.textContent = 'Booking…';
   try {
@@ -391,6 +400,22 @@ form.onsubmit = async (e) => {
     btn.disabled = false; updateButton();
   }
 };
+
+// Known misspellings of common email domains → the correct domain
+const DOMAIN_FIXES = {
+  'gmai.com': 'gmail.com', 'gmial.com': 'gmail.com', 'gmal.com': 'gmail.com', 'gamil.com': 'gmail.com',
+  'gnail.com': 'gmail.com', 'gmaill.com': 'gmail.com', 'gmail.co': 'gmail.com', 'gmail.con': 'gmail.com',
+  'gmail.cm': 'gmail.com', 'gmail.om': 'gmail.com', 'gmali.com': 'gmail.com',
+  'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'hotmail.con': 'hotmail.com',
+  'outlok.com': 'outlook.com', 'outlook.con': 'outlook.com', 'yahooo.com': 'yahoo.com', 'yaho.com': 'yahoo.com',
+  'uef.f': 'uef.fi', 'stu.uef.f': 'stu.uef.fi',
+};
+function fixEmail(email) {
+  const at = email.lastIndexOf('@');
+  if (at < 0) return email;
+  const domain = email.slice(at + 1).toLowerCase();
+  return DOMAIN_FIXES[domain] ? email.slice(0, at + 1) + DOMAIN_FIXES[domain] : email;
+}
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
