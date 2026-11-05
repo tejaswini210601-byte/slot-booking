@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laundry Booking</title>
+<!--
+  SLOT BOOKING – frontend (the page residents see)
+
+  How it works:
+  1. When the page opens, it asks the backend (Google Apps Script) for this week's slots.
+  2. It draws one card per day with a button per slot (green = free, grey = taken).
+  3. Tapping a free slot opens a small form (name, apartment, email).
+  4. Submitting sends the booking to the backend, which saves it and emails a confirmation.
+
+  The only thing you must change: API_URL below → your Apps Script web app address.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2433; --muted: #667085;
+    --free: #067647; --free-bg: #ecfdf3; --taken: #98a2b3; --taken-bg: #f2f4f7;
+    --accent: #2f54eb; --error: #b42318; --border: #e4e7ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1c212b; --text: #eef0f4; --muted: #98a2b3;
+      --free: #6ce9a6; --free-bg: #0d2a1d; --taken: #667085; --taken-bg: #232936;
+      --accent: #8aa2ff; --error: #fda29b; --border: #2c3341;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.45; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .day { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+         padding: 14px; margin-bottom: 12px; }
+  .day h2 { font-size: 1rem; margin: 0 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .slot { border: 0; border-radius: 10px; padding: 12px 8px; font: inherit; font-weight: 600;
+          cursor: pointer; background: var(--free-bg); color: var(--free); }
+  .slot small { display: block; font-weight: 400; font-size: .8rem; }
+  .slot:disabled { background: var(--taken-bg); color: var(--taken); cursor: default; text-decoration: line-through; }
+  .empty { color: var(--muted); margin: 0; }
+  dialog { border: 0; border-radius: 16px; padding: 20px; width: min(420px, calc(100% - 32px));
+           background: var(--card); color: var(--text); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  label { display: block; font-size: .9rem; margin: 12px 0 4px; }
+  input { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px;
+          font: inherit; background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 8px; margin-top: 18px; }
+  .btn { flex: 1; padding: 12px; border-radius: 10px; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+  .primary { background: var(--accent); color: #fff; }
+  .ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .msg { margin: 12px 0 0; font-size: .95rem; }
+  .msg.error { color: var(--error); }
+  .notice { padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Slot booking</h1>
+  <p class="sub">Tap a green slot to book it. You'll get a reminder before your slot – please confirm it, or it's released for others.</p>
+  <div id="days"><p class="notice">Loading slots…</p></div>
+</main>
+
+<dialog id="dlg">
+  <form id="form">
+    <h2 id="dlgTitle" style="margin:0;font-size:1.1rem"></h2>
+    <label for="name">Name</label>
+    <input id="name" name="name" required autocomplete="name">
+    <label for="apartment">Apartment number</label>
+    <input id="apartment" name="apartment" required placeholder="e.g. B12">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autocomplete="email">
+    <p id="msg" class="msg" role="status"></p>
+    <div class="row">
+      <button type="button" class="btn ghost" id="cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="submit">Book</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+// ▼▼▼ Paste your Apps Script web app URL here (it ends with /exec) ▼▼▼
+const API_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+
+const daysEl = document.getElementById('days');
+const dlg = document.getElementById('dlg');
+const form = document.getElementById('form');
+const msg = document.getElementById('msg');
+let chosen = null; // the slot the resident tapped
+
+// Remember name/apartment/email on this phone so they don't retype every time
+function loadSaved() {
+  try {
+    const s = JSON.parse(localStorage.getItem('bookingDetails') || '{}');
+    ['name', 'apartment', 'email'].forEach(k => { if (s[k]) form[k].value = s[k]; });
+  } catch (e) {}
+}
+function save(d) { try { localStorage.setItem('bookingDetails', JSON.stringify(d)); } catch (e) {} }
+
+// 1. Ask the backend for slots
+async function loadSlots() {
+  if (API_URL.startsWith('PASTE')) {
+    daysEl.innerHTML = '<p class="notice">Setup needed: paste the Apps Script URL into API_URL in index.html.</p>';
+    return;
+  }
+  try {
+    const res = await fetch(API_URL + '?action=slots');
+    const data = await res.json();
+    document.getElementById('title').textContent = data.title;
+    render(data.days);
+  } catch (e) {
+    daysEl.innerHTML = '<p class="notice">Could not load slots. Please refresh the page.</p>';
+  }
+}
+
+// 2. Draw the day cards and slot buttons
+function render(days) {
+  daysEl.innerHTML = '';
+  days.forEach(day => {
+    const card = document.createElement('section');
+    card.className = 'day';
+    card.innerHTML = `<h2>${day.label}</h2>`;
+    if (!day.slots.length) {
+      card.insertAdjacentHTML('beforeend', '<p class="empty">No more slots today.</p>');
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      day.slots.forEach(s => {
+        const b = document.createElement('button');
+        b.className = 'slot';
+        b.disabled = !s.free;
+        b.innerHTML = `${s.start}–${s.end}<small>${s.free ? 'Free' : 'Taken'}</small>`;
+        b.onclick = () => openForm(day, s);
+        grid.appendChild(b);
+      });
+      card.appendChild(grid);
+    }
+    daysEl.appendChild(card);
+  });
+}
+
+// 3. Open the booking form
+function openForm(day, slot) {
+  chosen = { date: day.date, start: slot.start, resource: slot.resource };
+  document.getElementById('dlgTitle').textContent = `${day.label}, ${slot.start}–${slot.end}`;
+  msg.textContent = ''; msg.className = 'msg';
+  loadSaved();
+  dlg.showModal();
+}
+document.getElementById('cancel').onclick = () => dlg.close();
+
+// 4. Send the booking to the backend
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const details = { name: form.name.value, apartment: form.apartment.value, email: form.email.value };
+  const btn = document.getElementById('submit');
+  btn.disabled = true; btn.textContent = 'Booking…';
+  try {
+    // text/plain avoids a browser "preflight" check that Apps Script doesn't support
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ ...chosen, ...details }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      save(details);
+      msg.textContent = data.message;
+      setTimeout(() => { dlg.close(); loadSlots(); }, 1800);
+    } else {
+      msg.textContent = data.error; msg.className = 'msg error';
+      loadSlots(); // refresh in case the slot was just taken
+    }
+  } catch (err) {
+    msg.textContent = 'Network problem – please try again.'; msg.className = 'msg error';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Book';
+  }
+};
+
+loadSlots();
+</script>
+</body>
+</html>
